@@ -27,7 +27,7 @@ export const revenue = [
   { month: 'Nov', revenue: 48.2, target: 45 },
 ];
 export const alerts = [
-  { id: 1, level: 'high', text: 'Consent form missing for Adaeze Okafor (surgery 10:30)' },
+  { id: 1, level: 'high', roles: ['director', 'surgeon', 'nurse'], text: 'Consent form missing for Adaeze Okafor (surgery 10:30)' },
   { id: 2, level: 'medium', text: 'Anaesthetic stock below reorder level' },
   { id: 3, level: 'medium', text: '2 recovery patients overdue for review' },
 ];
@@ -35,7 +35,7 @@ export const activity = [
   { id: 1, time: '09:12', text: 'Dr. Bello started surgery for Ngozi Eze' },
   { id: 2, time: '08:40', text: 'Pre-op clearance approved for Adaeze Okafor' },
   { id: 3, time: '08:05', text: 'New patient registered: Ifeoma Nwosu' },
-  { id: 4, time: '07:50', text: 'Invoice INV-2291 paid in full' },
+  { id: 4, time: '07:50', text: 'Invoice INV-2291 paid in full', roles: ['director', 'frontdesk', 'finance'] },
 ];
 
 // Detailed profiles keyed by patient ID. Demo data only.
@@ -275,3 +275,192 @@ export const invoices = [];
   Object.assign(sent, { status: 'Sent', createdAt: `${ago(2)}T09:00:00`, sentAt: `${ago(2)}T09:20:00`, validUntil: addDays(today, 28) });
   quotations.push(sent);
 }
+
+// ---- Laboratory ----
+let labSeq = 7001;
+export const blankLab = ({ patientId, patient, test, priority = 'Routine', requestedBy, consultationId = null, source = 'Manual', clinicalNote = '', requestedAt = new Date().toISOString() }) => {
+  const sex = profiles[patientId]?.sex;
+  return {
+    id: `L-${labSeq++}`, patientId, patient, sex: ['Female', 'Male'].includes(sex) ? sex : '', test, priority, requestedBy, consultationId, source, clinicalNote, requestedAt,
+    status: 'Requested', requestedById: '', requestedByDept: '', takenById: '', takenByName: '', takenAt: null,   // takenById is empty while the request waits in the laboratory queue
+    collectedAt: null, collectedBy: '', sampleNote: '', results: {}, resultedAt: null, resultedById: '', resultedBy: '',
+    reviewedAt: null, reviewedBy: '', reviewNote: '', cancelReason: '',
+  };
+};
+export const labRequests = [];
+{
+  const at = (daysAgo, t) => `${addDays(todayISO(), -daysAgo)}T${t}`;
+  const mkLab = (patientId, test, daysAgo, state, results = {}, extra = {}) => {
+    const pt = patients.find((x) => x.id === patientId);
+    const l = blankLab({ patientId, patient: pt.name, test, requestedBy: pt.surgeon, requestedAt: at(daysAgo, '09:00:00'), ...extra });
+    const i = ['Requested', 'Collected', 'Resulted', 'Reviewed'].indexOf(state);
+    if (i >= 1) Object.assign(l, { status: 'Collected', collectedAt: at(daysAgo, '09:40:00'), collectedBy: 'Nurse Joy' });
+    if (i >= 2) Object.assign(l, { status: 'Resulted', results, resultedAt: at(daysAgo, '14:00:00'), resultedBy: 'Nurse Joy' });
+    if (i >= 3) Object.assign(l, { status: 'Reviewed', reviewedAt: at(daysAgo, '16:30:00'), reviewedBy: pt.surgeon });
+    labRequests.push(l); return l;
+  };
+  const fbc = (hb) => ({ hb, wbc: '6.4', plt: '270' });
+  const ecgOk = { interp: 'Normal', findings: 'Sinus rhythm, normal rate.' };
+  mkLab('RPS-1042', 'Full blood count', 6, 'Reviewed', fbc('13.1'));
+  mkLab('RPS-1042', 'ECG', 6, 'Reviewed', ecgOk);
+  mkLab('RPS-1033', 'Full blood count', 8, 'Reviewed', fbc('14.2'));
+  mkLab('RPS-1033', 'ECG', 8, 'Reviewed', ecgOk);
+  mkLab('RPS-1041', 'Full blood count', 7, 'Reviewed', fbc('12.8'));
+  mkLab('RPS-1039', 'Full blood count', 12, 'Reviewed', fbc('12.4'));
+  mkLab('RPS-1030', 'Full blood count', 3, 'Reviewed', fbc('13.0'));
+  mkLab('RPS-1030', 'Blood group and genotype', 3, 'Reviewed', { group: 'O+', genotype: 'AA' });
+  // Chiamaka Obi: a low haemoglobin is waiting for the surgeon, and an urgent ECG still has no recording
+  const cons = consultations.find((c) => c.patientId === 'RPS-1036' && c.status === 'Completed');
+  const link = cons ? { consultationId: cons.id, source: `Consultation ${cons.id}`, clinicalNote: 'Before breast augmentation planning.' } : { clinicalNote: 'Before breast augmentation planning.' };
+  mkLab('RPS-1036', 'Full blood count', 1, 'Resulted', fbc('11.2'), link);
+  mkLab('RPS-1036', 'ECG', 1, 'Requested', {}, { ...link, priority: 'Urgent' });
+  // More for the queue and for someone's own work, so the laboratory tab has something to take
+  mkLab('RPS-1042', 'Electrolytes, urea and creatinine', 0, 'Requested', {}, { clinicalNote: 'Before theatre.' });
+  const taken = mkLab('RPS-1030', 'Fasting blood glucose', 0, 'Collected');
+  Object.assign(taken, { takenById: 'ST-16', takenByName: 'Nurse Ada', takenAt: at(0, '09:10:00'), collectedBy: 'Nurse Ada' });
+}
+
+// ---- Pharmacy ----
+let moveSeq = 1, rxSeq = 8001;
+const exp = (days) => addDays(todayISO(), days);
+const med = (id, name, cls, unit, reorderLevel, batches, extra = {}) => ({ id, name, class: cls, unit, reorderLevel, controlled: false, batches, ...extra });
+export const medications = [
+  med('M-01', 'Paracetamol 500 mg tablets', 'Analgesic', 'tablet', 200, [{ batchNo: 'PC2406', expiry: exp(400), qty: 600 }]),
+  med('M-02', 'Ibuprofen 400 mg tablets', 'NSAID analgesic', 'tablet', 150, [{ batchNo: 'IB2311', expiry: exp(60), qty: 90 }, { batchNo: 'IB2407', expiry: exp(500), qty: 300 }]),
+  med('M-03', 'Tramadol 50 mg capsules', 'Opioid analgesic', 'capsule', 60, [{ batchNo: 'TR2402', expiry: exp(300), qty: 120 }], { controlled: true }),
+  med('M-04', 'Amoxicillin-clavulanate 625 mg tablets', 'Penicillin antibiotic', 'tablet', 100, [{ batchNo: 'AC2404', expiry: exp(250), qty: 240 }]),
+  med('M-05', 'Ciprofloxacin 500 mg tablets', 'Quinolone antibiotic', 'tablet', 60, [{ batchNo: 'CF2310', expiry: exp(-20), qty: 40 }, { batchNo: 'CF2405', expiry: exp(420), qty: 100 }]),
+  med('M-06', 'Metronidazole 400 mg tablets', 'Nitroimidazole antibiotic', 'tablet', 80, [{ batchNo: 'MT2403', expiry: exp(380), qty: 200 }]),
+  med('M-07', 'Ondansetron 4 mg tablets', 'Anti-emetic', 'tablet', 40, [{ batchNo: 'ON2401', expiry: exp(200), qty: 80 }]),
+  med('M-08', 'Omeprazole 20 mg capsules', 'Proton pump inhibitor', 'capsule', 60, [{ batchNo: 'OM2408', expiry: exp(450), qty: 150 }]),
+  med('M-09', 'Propofol 200 mg/20 mL injection', 'Anaesthetic', 'vial', 10, [{ batchNo: 'PF2402', expiry: exp(150), qty: 6 }]),
+  med('M-10', 'Lidocaine 1% with adrenaline injection', 'Local anaesthetic', 'vial', 20, [{ batchNo: 'LD2406', expiry: exp(320), qty: 45 }]),
+  med('M-11', 'Non-adherent dressing 10 x 10 cm', 'Dressing', 'piece', 100, [{ batchNo: 'DR2409', expiry: exp(700), qty: 260 }]),
+];
+export const stockMovements = [];
+export const addMovement = (itemId, type, qty, batchNo, by, note = '', ref = '') =>
+  stockMovements.push({ id: moveSeq++, itemId, at: new Date().toISOString(), type, qty, batchNo, by, note, ref });
+medications.forEach((m) => m.batches.forEach((b) => addMovement(m.id, 'Received', b.qty, b.batchNo, 'Stock take', 'Opening balance')));
+
+// A pharmacist's prescription has no prescriberId: prescriberName is the pharmacist, and sentToId is the surgeon or nurse it was sent to.
+// receipt is null until that person replies: { state: 'Approved' | 'Action taken' | 'Returned' | 'Declined', at, byId, note } (see RX_REPLIES in utils/pharmacy.js).
+export const blankRx = ({ patientId, patient, prescriberId = null, prescriberName = '', createdById = null, sentToId = null, lines, notes = '', allergyOverride = null, source = 'Manual' }) => ({
+  id: `RX-${rxSeq++}`, patientId, patient, prescriberId, prescriberName, createdById, sentToId, sentAt: sentToId ? new Date().toISOString() : null, receipt: null,
+  source, createdAt: new Date().toISOString(), notes, allergyOverride,
+  lines: lines.map((l) => ({ ...l, dispensedQty: 0 })), dispensings: [], cancelledAt: null, cancelReason: '',
+});
+export const prescriptions = [
+  blankRx({ patientId: 'RPS-1039', patient: 'Tamuno Briggs', prescriberId: 'amadi', source: 'Aftercare', notes: 'Wound review: possible early infection.',
+    lines: [{ itemId: 'M-04', name: 'Amoxicillin-clavulanate 625 mg tablets', dose: '1 tablet', frequency: 'Three times daily', days: 7, qty: 21, controlled: false },
+            { itemId: 'M-01', name: 'Paracetamol 500 mg tablets', dose: '2 tablets', frequency: 'When needed', days: 5, qty: 20, controlled: false }] }),
+  // Written by the pharmacy and sent to a nurse and a surgeon, who have not received them yet
+  blankRx({ patientId: 'RPS-1039', patient: 'Tamuno Briggs', prescriberName: 'Pharm. Chioma Okoye', createdById: 'ST-11', sentToId: 'ST-05', source: 'Pharmacy',
+    notes: 'Dressing and pain relief for the wound care visit.',
+    lines: [{ itemId: 'M-11', name: 'Non-adherent dressing 10 x 10 cm', dose: '1 piece', frequency: 'Once daily', days: 5, qty: 5, controlled: false }] }),
+  blankRx({ patientId: 'RPS-1042', patient: 'Adaeze Okafor', prescriberName: 'Pharm. Chioma Okoye', createdById: 'ST-11', sentToId: 'ST-02', source: 'Pharmacy',
+    notes: 'Stomach protection before theatre. Please confirm it suits the plan.',
+    lines: [{ itemId: 'M-08', name: 'Omeprazole 20 mg capsules', dose: '1 capsule', frequency: 'At night', days: 3, qty: 3, controlled: false }] }),
+  blankRx({ patientId: 'RPS-1033', patient: 'Ibinabo Harry', prescriberId: 'bello',
+    lines: [{ itemId: 'M-03', name: 'Tramadol 50 mg capsules', dose: '1 capsule', frequency: 'Twice daily', days: 3, qty: 6, controlled: true }] }),
+];
+
+// ---- Staff ----
+const mkStaff = (id, name, title, role, department, isHead, email, phone, joined, status = 'Active') => ({
+  id, name, title, role, department, isHead, phone, email,
+  joined, status, portalId: `P-${1000 + Number(id.slice(3))}`,
+});
+export const staff = [
+  mkStaff('ST-01', 'Dr. Chidi Eze', 'Medical Director', 'director', '', false, 'c.eze@regal.example', '0803 555 0100', '2018-02-01'),
+  mkStaff('ST-02', 'Dr. Bello', 'Consultant plastic surgeon', 'surgeon', 'theatre', true, 'bello@regal.example', '0803 555 0111', '2019-06-10'),
+  mkStaff('ST-03', 'Dr. Amadi', 'Consultant plastic surgeon', 'surgeon', 'clinic', true, 'amadi@regal.example', '0803 555 0112', '2020-09-14'),
+  mkStaff('ST-04', 'Dr. Okeke', 'Consultant anaesthetist', 'surgeon', 'theatre', false, 'okeke@regal.example', '0803 555 0113', '2021-03-01'),
+  mkStaff('ST-05', 'Nurse Joy', 'Theatre and recovery nurse', 'nurse', 'aftercare', true, 'joy@regal.example', '0805 555 0120', '2021-08-23'),
+  mkStaff('ST-06', 'Nurse Peace', 'Laboratory nurse', 'nurse', 'laboratory', true, 'peace@regal.example', '0805 555 0121', '2022-01-17'),
+  mkStaff('ST-07', 'Amaka Nwosu', 'Front desk officer', 'frontdesk', 'frontdesk', true, 'amaka@regal.example', '0809 555 0130', '2022-05-02'),
+  mkStaff('ST-08', 'Mr. Okon', 'Finance manager', 'finance', 'finance', true, 'okon@regal.example', '0809 555 0140', '2019-11-04'),
+  mkStaff('ST-09', 'Nurse Grace', 'Ward nurse', 'nurse', 'pharmacy', false, 'grace@regal.example', '0805 555 0122', '2018-10-08', 'Inactive'),
+  mkStaff('ST-10', 'Ms. Ifeoma Eze', 'Staff administrator', 'hr', '', false, 'ifeoma@regal.example', '0809 555 0150', '2019-02-11'),
+  mkStaff('ST-11', 'Pharm. Chioma Okoye', 'Head pharmacist', 'pharmacist', 'pharmacy', true, 'chioma@regal.example', '0805 555 0123', '2022-09-05'),
+  // Team members, so every department head has someone to give work to
+  mkStaff('ST-12', 'Nurse Halima', 'Theatre nurse', 'nurse', 'theatre', false, 'halima@regal.example', '0805 555 0124', '2023-02-13'),
+  mkStaff('ST-13', 'Pharm. Tola Bankole', 'Pharmacist', 'pharmacist', 'pharmacy', false, 'tola@regal.example', '0805 555 0125', '2023-04-03'),
+  mkStaff('ST-14', 'Efe Oghene', 'Front desk officer', 'frontdesk', 'frontdesk', false, 'efe@regal.example', '0809 555 0131', '2023-06-19'),
+  mkStaff('ST-15', 'Ms. Bola Adamu', 'Accounts officer', 'finance', 'finance', false, 'bola@regal.example', '0809 555 0141', '2023-07-24'),
+  mkStaff('ST-16', 'Nurse Ada', 'Laboratory nurse', 'nurse', 'laboratory', false, 'ada@regal.example', '0805 555 0126', '2023-09-11'),
+  mkStaff('ST-17', 'Nurse Funmi', 'Recovery nurse', 'nurse', 'aftercare', false, 'funmi@regal.example', '0805 555 0127', '2023-10-02'),
+  mkStaff('ST-18', 'Dr. Yusuf Danjuma', 'Resident surgeon', 'surgeon', 'clinic', false, 'yusuf@regal.example', '0803 555 0114', '2024-01-15'),
+];
+
+// ---- Staff portal (the centre's existing staff database, read-only) ----
+export const portalStaff = [
+  { portalId: 'P-1002', name: 'Dr. Bello', title: 'Consultant plastic surgeon', department: 'Theatre', email: 'bello@regal.example', phone: '0803 555 0111' },
+  { portalId: 'P-1005', name: 'Nurse Joy', title: 'Theatre and recovery nurse', department: 'Aftercare', email: 'joy@regal.example', phone: '0805 555 0120' },
+  { portalId: 'P-2101', name: 'Dr. Funke Adebayo', title: 'Consultant plastic surgeon', department: 'Clinic', email: 'funke.adebayo@regal.example', phone: '0803 555 0201' },
+  { portalId: 'P-2102', name: 'Blessing Okafor', title: 'Staff nurse', department: 'Theatre', email: 'blessing.okafor@regal.example', phone: '0805 555 0202' },
+  { portalId: 'P-2103', name: 'Tunde Bakare', title: 'Accountant', department: 'Finance', email: 'tunde.bakare@regal.example', phone: '0809 555 0203' },
+  { portalId: 'P-2104', name: 'Kemi Salako', title: 'Receptionist', department: 'Front desk', email: 'kemi.salako@regal.example', phone: '0809 555 0204' },
+  { portalId: 'P-2105', name: 'Samuel Ibe', title: 'Porter', department: 'Facilities', email: 'samuel.ibe@regal.example', phone: '0809 555 0205' },
+  { portalId: 'P-2106', name: 'Dr. Lade Coker', title: 'Pharmacist', department: 'Pharmacy', email: 'lade.coker@regal.example', phone: '0805 555 0206' },
+];
+
+// ---- Sign-in accounts (demo only) ----
+// The real backend stores a salted hash (argon2 or bcrypt) and never sends it, or the two-step secret, to the browser.
+export const DEMO_PASSWORD = 'Regal-Demo-2026!';
+const SECRETS = ['JBSWY3DPEHPK3PXP', 'KRSXG5CTMVRXEZLU', 'MFRGGZDFMZTWQ2LK', 'NBSWY3DPFQQHO33S', 'ONSWG4TFOQYTEMZU', 'PFXXK4TDMVZXI3TP', 'GEZDGNBVGY3TQOJQ', 'IFBEGRCFIZDUQSKK', 'JRXXEZLNEBUXA43V', 'LBSWY3DPEB3W64TM'];
+let secretIx = 0;
+const acct = (staffId, status = 'Active', extra = {}) => ({
+  staffId, status, password: status === 'Active' ? DEMO_PASSWORD : null, failedAttempts: 0, lockedUntil: null,
+  lastLoginAt: status === 'Active' ? new Date(Date.now() - 20 * 36e5).toISOString() : null, invite: null, reset: null,
+  mfa: status === 'Active' ? { secret: SECRETS[secretIx++ % SECRETS.length], enrolledAt: new Date(Date.now() - 30 * 864e5).toISOString() } : null,
+  backupCodes: [], ...extra,
+});
+export const accounts = [
+  acct('ST-01'), acct('ST-02'), acct('ST-03'), acct('ST-05'), acct('ST-06'), acct('ST-07'), acct('ST-08'), acct('ST-10'), acct('ST-11'),
+  acct('ST-12'), acct('ST-13'), acct('ST-14'), acct('ST-15'), acct('ST-16'), acct('ST-17'), acct('ST-18'),
+  acct('ST-04', 'Invited', { invite: { token: 'demo-invite-okeke', expiresAt: new Date(Date.now() + 72 * 36e5).toISOString() } }),
+  acct('ST-09', 'Disabled'),
+];
+
+// ---- Department reports ----
+export const departmentReports = [];
+
+// ---- Messages between staff ----
+const ago = (h) => new Date(Date.now() - h * 36e5).toISOString();
+export const threads = [
+  { id: 'T-1', subject: 'Recovery chairs in Theatre 2', members: ['ST-05', 'ST-02'], departments: [], readUpTo: { 'ST-05': 2, 'ST-02': 2 }, messages: [
+    { id: 1, fromId: 'ST-05', at: ago(26), body: 'Two of the recovery chairs in Theatre 2 are worn and one won’t recline. Can we ask for replacements?' },
+    { id: 2, fromId: 'ST-02', at: ago(24), body: 'Yes, I’ll raise it in my monthly report. Please take photos so we can show the supplier.' } ] },
+  { id: 'T-2', subject: 'Invoice question: INV-2291', members: ['ST-07', 'ST-08'], departments: ['finance'], readUpTo: { 'ST-07': 1, 'ST-08': 0 }, messages: [
+    { id: 1, fromId: 'ST-07', at: ago(3), body: 'The patient says the discount wasn’t shown on this invoice. Could you check it and let me know what to tell them?' } ] },
+  { id: 'T-3', subject: 'Bloods before tomorrow’s list', members: ['ST-02', 'ST-05'], departments: [], readUpTo: { 'ST-02': 1, 'ST-05': 0 }, messages: [
+    { id: 1, fromId: 'ST-02', at: ago(1), body: 'Please make sure the pre-op bloods are in the system by 4pm so I can sign them off.' } ] },
+];
+
+// ---- Tasks (assigned inside a department, or requested from another department) ----
+let taskSeq = 1;
+export const blankTask = ({ title, details = '', priority = 'Normal', dueDate = '', patientId = null, patient = '', kind, fromId, fromDept = '', toDept, assigneeId = null, byName }) => {
+  const now = new Date().toISOString();
+  return { id: `TK-${taskSeq++}`, title, details, priority, dueDate, patientId, patient, kind, fromId, fromDept, toDept, assigneeId,
+    status: 'To do', createdAt: now, updatedAt: now, doneNote: '',
+    history: [{ at: now, by: byName, text: kind === 'assigned' ? 'Assigned the task' : 'Sent the request' }] };
+};
+export const tasks = [];
+{
+  const today = todayISO();
+  const add = (t, extra = {}) => { const k = blankTask(t); Object.assign(k, extra); tasks.push(k); return k; };
+  add({ title: 'Prepare Theatre 1 for the 12:45 facelift', details: 'Instruments, positioning pads and the warming blanket.', priority: 'Urgent', dueDate: today, kind: 'assigned', fromId: 'ST-02', fromDept: 'theatre', toDept: 'theatre', assigneeId: 'ST-12', byName: 'Dr. Bello' });
+  add({ title: 'Count propofol and reorder if below level', details: 'Stock is under the reorder level. Check batches and expiry dates.', dueDate: addDays(today, 2), kind: 'assigned', fromId: 'ST-11', fromDept: 'pharmacy', toDept: 'pharmacy', assigneeId: 'ST-13', byName: 'Pharm. Chioma Okoye' },
+    { status: 'In progress' });
+  add({ title: 'Is the antibiotic for Tamuno Briggs ready?', details: 'Wound review today: possible early infection. Please prepare amoxicillin-clavulanate.', priority: 'Urgent', patientId: 'RPS-1039', patient: 'Tamuno Briggs',
+    kind: 'request', fromId: 'ST-05', fromDept: 'aftercare', toDept: 'pharmacy', byName: 'Nurse Joy' });
+  add({ title: 'Send me the laboratory’s reagent stock count and what needs reordering', details: 'Needed before the end of the week.', dueDate: addDays(today, 3), kind: 'assigned', fromId: 'ST-01', fromDept: '', toDept: 'laboratory', assigneeId: 'ST-06', byName: 'Dr. Chidi Eze' });
+  add({ title: 'Record the urgent ECG for Chiamaka Obi', details: 'Needed before her breast augmentation can be marked ready.', priority: 'Urgent', patientId: 'RPS-1036', patient: 'Chiamaka Obi',
+    kind: 'request', fromId: 'ST-03', fromDept: 'clinic', toDept: 'laboratory', byName: 'Dr. Amadi' });
+}
+
+// The id counters have to be saved with the data, or a reload would hand out numbers that already exist.
+export const getCounters = () => ({ apptId, consultSeq, planSeq, surgerySeq, aftercareSeq, quoteSeq, invoiceSeq, receiptSeq, labSeq, moveSeq, rxSeq, taskSeq });
+export const setCounters = (c = {}) => {
+  ({ apptId = apptId, consultSeq = consultSeq, planSeq = planSeq, surgerySeq = surgerySeq, aftercareSeq = aftercareSeq, quoteSeq = quoteSeq,
+    invoiceSeq = invoiceSeq, receiptSeq = receiptSeq, labSeq = labSeq, moveSeq = moveSeq, rxSeq = rxSeq, taskSeq = taskSeq } = c);
+};

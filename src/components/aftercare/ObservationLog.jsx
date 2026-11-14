@@ -18,11 +18,11 @@ export default function ObservationLog({ observations, canReview, onReview }) {
         <div className="trend" role="img" aria-label={`Pain score over ${trend.length} readings, latest ${trend[trend.length - 1].pain} out of 10`}>
           <ResponsiveContainer width="100%" height={120}>
             <LineChart data={trend} margin={{ top: 6, right: 12, bottom: 0, left: -24 }}>
-              <CartesianGrid stroke="#e9eaf0" vertical={false} />
+              <CartesianGrid stroke="#e6ece8" vertical={false} />
               <XAxis dataKey="when" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
               <YAxis domain={[0, 10]} ticks={[0, 5, 10]} tick={{ fontSize: 11 }} />
               <Tooltip formatter={(v) => [`${v} out of 10`, 'Pain']} />
-              <Line type="monotone" dataKey="pain" stroke="#3a2252" strokeWidth={2} dot={{ r: 3 }} />
+              <Line type="monotone" dataKey="pain" stroke="#1f7a4d" strokeWidth={2} dot={{ r: 3 }} />
             </LineChart>
           </ResponsiveContainer>
           <div className="muted small-text">Pain score over time</div>

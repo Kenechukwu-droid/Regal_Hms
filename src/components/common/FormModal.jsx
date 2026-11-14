@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 
 // Shared modal for add/edit forms. Handles Escape, saving state, errors and a two-step delete.
-export default function FormModal({ title, submitLabel, onSubmit, onClose, onDelete, deleteLabel = 'Remove', confirmText = 'Remove this entry from the patient’s record?', confirmYes = 'Yes, remove', confirmNo = 'Keep', canSubmit = true, children }) {
+export default function FormModal({ title, submitLabel, onSubmit, onClose, onDelete, deleteLabel = 'Remove', confirmText = 'Remove this entry from the patient’s record?', confirmYes = 'Yes, remove', confirmNo = 'Keep', canSubmit = true, wide = false, children }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [confirming, setConfirming] = useState(false);
@@ -20,7 +20,7 @@ export default function FormModal({ title, submitLabel, onSubmit, onClose, onDel
 
   return (
     <div className="overlay" onMouseDown={onClose}>
-      <form className="modal" role="dialog" aria-modal="true" aria-label={title}
+      <form className={`modal ${wide ? 'wide' : ''}`} role="dialog" aria-modal="true" aria-label={title}
         onMouseDown={(e) => e.stopPropagation()} onSubmit={(e) => { e.preventDefault(); run(onSubmit); }}>
         <h2>{title}</h2>
         {children}

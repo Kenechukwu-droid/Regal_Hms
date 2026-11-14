@@ -5,17 +5,23 @@ import PageHeader from '../../components/common/PageHeader';
 import StatusBadge from '../../components/common/StatusBadge';
 import KpiCard from '../../components/dashboard/KpiCard';
 import NewQuoteForm from '../../components/billing/NewQuoteForm';
+import MoneyOverview from '../../components/reports/MoneyOverview';
 import { fmtDate, naira } from '../../components/billing/constants';
 import { fmtDateTime } from '../../components/aftercare/constants';
 import { clinicianName } from '../../components/appointments/constants';
 import { invoiceBalance, invoiceStatus, invoiceTotal, quoteStatus, quoteTotals } from '../../utils/billing';
 import { todayISO } from '../../utils/dates';
 import { api } from '../../services/api';
+import { useRole } from '../../context/RoleContext';
+import { can } from '../../utils/permissions';
 
 const TABS = ['Quotations', 'Invoices', 'Receipts'];
 
 export default function Billing() {
   const nav = useNavigate();
+  const { role } = useRole();
+  const seeTotals = can(role, 'viewRevenue');   // front desk handles invoices but doesn't see company totals
+  const tabs = seeTotals ? [...TABS, 'Money overview'] : TABS;   // company money figures: Finance and the Medical Director only
   const [tab, setTab] = useState('Quotations');
   const [q, setQ] = useState('');
   const [quotes, setQuotes] = useState(null);
@@ -55,9 +61,9 @@ export default function Billing() {
       <PageHeader title="Billing & payments" subtitle="Quote the patient, invoice what they accept, then record payments and issue receipts."
         action={<button className="btn primary" onClick={() => setCreating(true)}><FilePlus size={16} aria-hidden /> New quotation</button>} />
       <div className="grid kpis">
-        <KpiCard label="Outstanding" value={naira(stats.outstanding)} note="Unpaid on open invoices" />
-        <KpiCard label="Overdue" value={stats.overdueN} note={stats.overdueN ? `${naira(stats.overdueAmt)} past due` : 'Nothing past due'} />
-        <KpiCard label="Collected this month" value={naira(stats.collected)} note="From recorded receipts" />
+        {seeTotals && <KpiCard label="Outstanding" value={naira(stats.outstanding)} note="Unpaid on open invoices" />}
+        {seeTotals && <KpiCard label="Overdue" value={stats.overdueN} note={stats.overdueN ? `${naira(stats.overdueAmt)} past due` : 'Nothing past due'} />}
+        {seeTotals && <KpiCard label="Collected this month" value={naira(stats.collected)} note="From recorded receipts" />}
         <KpiCard label="Quotes awaiting a decision" value={stats.awaiting} note="Sent, not yet answered" />
       </div>
 
@@ -74,7 +80,8 @@ export default function Billing() {
         )}
       </section>
 
-      <div className="tabs" role="tablist">{TABS.map((t) => <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? 'on' : ''} onClick={() => setTab(t)}>{t}</button>)}</div>
+      <div className="tabs" role="tablist">{tabs.map((t) => <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? 'on' : ''} onClick={() => setTab(t)}>{t}</button>)}</div>
+      {tab === 'Money overview' ? <MoneyOverview /> : (<>
       <div className="toolbar"><input className="search" placeholder="Search patient or procedure" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search billing" /></div>
 
       <div className="card table-wrap">
@@ -102,7 +109,7 @@ export default function Billing() {
                 <tr key={x.receiptNo}><td><Link className="plink" to={`/billing/receipts/${x.receiptNo}`}>{x.receiptNo}</Link></td><td>{fmtDateTime(x.at)}</td><td>{x.patient}</td>
                   <td><Link className="plink" to={`/billing/invoices/${x.invoiceId}`}>{x.invoiceId}</Link></td><td>{x.method}</td><td className="num">{naira(x.amount)}</td></tr>))}</tbody></table>);
         })()}
-      </div>
+      </div></>)}
 
       {creating && <NewQuoteForm plans={plans} patients={patients} onSave={create} onClose={() => setCreating(false)} />}
     </>
